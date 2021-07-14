@@ -1,5 +1,5 @@
 pico-8 cartridge // http://www.pico-8.com
-version 18
+version 32
 __lua__
 -- index
 function _init()
@@ -44,7 +44,7 @@ function upd_game()
 
 	-- define run spd
 	if btn(5) then p.hspd = p.rspd
-	else p.hspd = p.hspd end
+	else p.hspd = p.wspd end
 
 	-- define jmp/grav spd
 	if grounded then
