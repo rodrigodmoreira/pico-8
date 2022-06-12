@@ -1,18 +1,17 @@
 pico-8 cartridge // http://www.pico-8.com
-version 35
+version 36
 __lua__
 -- init
 
 function _init()
 	game_init()
-	_update
-	=game_update
-	_draw=game_draw
+	_update = game_update
+	_draw = game_draw
 end
 
 -- game init
 function game_init()
-	plist={
+	plist = {
 		player:new(),
 		player:new(1)
 	}
@@ -52,11 +51,12 @@ function game_draw()
 	iball:draw()
 
 	-- debug
+	local p1 = plist[1]
 	print("pos="..p1.pos.x.." "..p1.pos.y.." "..p1.pos.z.." vspd="..p1.vspd, 1,1, 7)
-	local axis=get_player_gnd_axis()
+	local axis = get_player_gnd_axis()
 	print(axis.x.." "..axis.y, 1,8, 7)
 	print("hitpower="..p1.hitpower, 1,16, 7)
-	print(p1.hitting, 105,16, 7)
+	print(p1.hit_start, 105,16, 7)
 	print(ticks(), 105,32, 7)
 end
 
@@ -64,40 +64,45 @@ end
 -- util
 
 scene_manager = {
-	goto_menu=function()
+	goto_menu = function()
 	end
 }
 
-player={
-	new=function(self, id)
-		local o={
-			id=id or 0,
-			state=0,
-			pos=vec2:new(64,64),
-			spd=vec2:new(),
-			vspd=0,
-			hflip=false,
-			hitpower=0,
-			hitting=false,
-			hit_start=0,
-			anim={
+player = {
+	new = function(self, id)
+		local o = {
+			id = id or 0,
+			state = 0,
+			pos = vec2:new(64,64),
+			spd = vec2:new(),
+			dg_spd = vec2:new(),
+			vspd = 0,
+			hflip = false,
+			hitpower = 0,
+			hitting = false,
+			hit_start = 0,
+			hit_duration = 50, -- ticks
+			anim = {
 				{0, 2, 4}, -- idle
 				{6, 8, 10, 12}, -- run
-				{8} -- jump
+				{8}, -- jump
+				{8} -- dash
 			},
 
 			update=function(self)
-				local axis=get_player_gnd_axis(self.id)
-				local grounded=self.pos.z==0
+				-- basic info
+				local axis = get_player_gnd_axis(self.id)
+				local grounded = self.pos.z == 0
 
-				-- set state
-				if abs(axis.x)+abs(axis.y) > 0 and grounded then
-					self.state=1
-				elseif not grounded then
-					self.state=2
-				else
-					self.state=0
-				end
+				-- pre all-state
+					-- set state
+					if axis:length() > 0 and grounded then
+						self.state = 1
+					elseif not grounded then
+						self.state = 2
+					else
+						self.state = 0
+					end
 
 				-- jump
 				if btnp(❎, id) and grounded then
@@ -129,7 +134,7 @@ player={
 					local elapsed = (ticks()-self.hit_start)
 					
 					-- exit hit state
-					if (elapsed>=100) self.hitting=false
+					if (elapsed>=self.hit_duration) self.hitting=false
 				end
 				self.hitpower=_t(
 					btn(🅾️, id),
@@ -146,56 +151,75 @@ player={
 					
 				end
 
-				-- update position
-				self.pos.x=clamp(
-					self.pos.x+2*axis.x,
-					0,127
-				)
-				self.pos.y=clamp(
-					self.pos.y+2*axis.y,
-					56,127
-				)
+
+				-- state specifics
+				if self.state == 1 then -- idle
+					
+				elseif self.state == 2 then -- walk
+					
+				elseif self.state == 3 then -- jump
 				
-				-- update fake vertical spd and pos
-				if not grounded then
-					self.vspd = self.vspd-1
+				elseif self.state == 4 then -- dash
+					self.dg_spd.x = self.dg_spd.x * 0.8
+					self.dg_spd.y = self.dg_spd.y * 0.8
 				end
-				self.pos.z = clamp(
-					self.pos.z+self.vspd,
-					0,100)
+
+
+				-- post all-state
+					-- set sprite orientation
+					if (axis.x < 0) self.hflip = true
+					if (axis.x > 0) self.hflip = false
+
+					-- update position
+					self.pos.x = clamp(
+						self.pos.x + 2*axis.x,
+						0,127
+					)
+					self.pos.y = clamp(
+						self.pos.y + 2*axis.y,
+						56,127
+					)
+					
+					-- update fake vertical spd and pos
+					if not grounded then
+						self.vspd = self.vspd - 1
+					end
+					self.pos.z = clamp(
+						self.pos.z + self.vspd,
+						0,100)
 			end,
 
-			draw=function(self)
-				local p=self.pos
+			draw = function(self)
+				local p = self.pos
 				
 				-- shadow
-				local z_hoff=min(7,p.z/5)
-				local z_voff=min(2,p.z/10)
+				local z_hoff = min(7,p.z/5)
+				local z_voff = min(2,p.z/10)
 				ovalfill(
-					p.x-8+z_hoff,p.y-2+z_voff,
-					p.x+8-z_hoff,p.y+2-z_voff, 1)
+					p.x - 8 + z_hoff,p.y - 2 + z_voff,
+					p.x + 8 - z_hoff,p.y + 2 - z_voff, 1)
 				
 				-- player sprite
-				local frame_list=self.anim[self.state+1]
-				local frame=frame_list[get_frame_id(#frame_list, 0.1)+1]
+				local frame_list = self.anim[self.state+1]
+				local frame = frame_list[get_frame_id(#frame_list, 0.1) + 1]
 				spr(frame,
-					p.x-8,p.y-16-p.z,
+					p.x - 8,p.y - 16 - p.z,
 					2,2, self.hflip)
-				if (self.id==0) print("st="..frame,105,1,7)
+				if (self.id == 0) print("st="..frame,105,1,7)
 
 				-- bat sprite
 				if self.hitting then
-					spr(34+2*get_frame_id(5, 0.1, self.hit_start), --get_frame_id(6, 10, self.hit_start)
-						p.x-8,p.y-16-p.z,
+					spr(34 + 2 * get_timed_frame_id(self.hit_start, self.hit_duration, 6),
+						p.x - 8,p.y - 16 - p.z,
 						2,2, self.hflip)
 				else
 					spr(32,
-						p.x-8,p.y-16-p.z,
+						p.x - 8,p.y - 16 - p.z,
 						2,2, self.hflip)
 				end
 
 				-- power meter
-				if (self.hitpower~=0) rectfill(p.x+8,p.y-p.z, p.x+10,p.y-p.z-2*self.hitpower, 8)
+				if (self.hitpower ~= 0) rectfill(p.x + 8,p.y - p.z, p.x + 10,p.y - p.z - 2*self.hitpower, 8)
 			end
 		}
 		return o
@@ -242,22 +266,27 @@ ball = {
 }
 
 function get_player_gnd_axis(id)
-	id=id or 0
-	local axis=vec2:new()
+	id = id or 0
+	local axis = vec2:new()
 	axis.x = _t(btn(⬅️, id),-1,0) + _t(btn(➡️,id), 1,0)
 	axis.y = _t(btn(⬆️, id),-1,0) + _t(btn(⬇️,id), 1,0)
 	return axis
 end
 
-vec2={
-	new=function(self,x,y,z)
-		local o={
-			x=x or 0,
-			y=y or 0,
-			z=z or 0}
+vec2 = {
+	new = function(self,x,y,z)
+		local o = {
+			x = x or 0,
+			y = y or 0,
+			z = z or 0}
+		setmetatable(o, self.mt)
 		return o
+	end,
+	length = function(self)
+		return sqrt(self.x * self.x + self.y * self.y + self.z * self.z)
 	end
 }
+vec2.mt = { __index=vec2 }
 
 function ticks()
 	return flr(time()*100)
@@ -272,8 +301,12 @@ function clamp(v, mi, ma)
 	return max(min(v, ma), mi)
 end
 
-function get_frame_id(_max, spd, offset)
-	return flr((ticks()-(offset or 0))*spd)%_max
+function get_frame_id(_max, spd, tick_offset)
+	return flr((ticks() - (tick_offset or 0)) * spd) % _max
+end
+
+function get_timed_frame_id(start_tick, duration, frames_nmb)
+	return flr((ticks() - start_tick)/duration * frames_nmb)
 end
 
 function check_rect_coll(x1,y1,w1,h1, x2,y2,w2,h2)
@@ -284,23 +317,21 @@ function check_rect_coll(x1,y1,w1,h1, x2,y2,w2,h2)
 	)
 end
 
---[[
-function get_frame_id(_max, spd, width, height)
-	local lid=width*(flr(time()*spd)%_max)
-	return height*flr(lid/128)+lid%128
-end
-]]
+-- function get_frame_id(_max, spd, width, height)
+-- 	local lid=width*(flr(time()*spd)%_max)
+-- 	return height*flr(lid/128)+lid%128
+-- end
 
 function sort_by_depth()
-	local res={}
+	local res = {}
 	-- bubblesort cause im lazy right now
-	for i=1,#plist-1 do
-		for j=1, #plist-1 do
-			local current=plist[j]
-			local next=plist[j+1]
-			if current.pos.y>next.pos.y then
-				plist[j]=next
-				plist[j+1]=current
+	for i = 1,#plist-1 do
+		for j = 1, #plist-1 do
+			local current = plist[j]
+			local next = plist[j+1]
+			if current.pos.y > next.pos.y then
+				plist[j] = next
+				plist[j+1] = current
 			end
 		end
 	end
@@ -427,14 +458,14 @@ __gfx__
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002222222222222222ddd2dddddddddddd
-0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002222222222222222ddd2dddddddddddd
-000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000222222221222222222222222dddddddd
-0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002222222222222222dddd222ddddddddd
-0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002222222212222222dddddddddddddddd
-0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002222222212222222dddddddddddddddd
-0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002222222211222222dddddddddddddddd
-0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002222222211111111dddddddddddddddd
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000077777777ddd2dddddddddddd
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006666666666626666dddddddd
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000dddddddd22212222dddddddd
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000d66d00022212222dddddddd
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000660000dddddddddddddddd
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000d66d00066666666dddddddd
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000777700066666666dddddddd
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000d6666d55dddddddddddddddd
 __map__
 fcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 fcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
